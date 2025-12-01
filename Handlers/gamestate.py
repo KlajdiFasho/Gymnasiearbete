@@ -1,5 +1,6 @@
 import displayio
 import terminalio
+import time
 from adafruit_display_text import label
 from adafruit_display_shapes.rect import Rect
 
@@ -58,7 +59,7 @@ class PlatformerState(BaseState):
         super().__init__(manager)
         self.bg = Rect(0, 0, 320, 240, fill=0x000000)
         self.player = Rect(150, 110, 20, 20, fill=0x00FF00)
-        self.hud = label.Label(terminalio.FONT, text="PLAYING... (Press B to die.)", x=10, y=10, color=0xFFFFFF)
+        self.hud = label.Label(terminalio.FONT, text="PLAYING...", x=10, y=10, color=0xFFFFFF)
         
         self.root_group.append(self.bg)
         self.root_group.append(self.player)
@@ -151,7 +152,7 @@ class SettingsState(BaseState):
             self.manager.log(f"Sense set to: {handler.sensitivity}")
 
 # -----------------------------------------------------------
-# STATE 5: CONSOLE (Updated with Scrolling)
+# STATE 5: CONSOLE (Formatted with Time)
 # -----------------------------------------------------------
 class ConsoleState(BaseState):
     def __init__(self, manager):
@@ -159,62 +160,80 @@ class ConsoleState(BaseState):
         self.bg = Rect(0, 0, 320, 240, fill=0x111111) 
         self.title = label.Label(terminalio.FONT, text="SYSTEM LOGS", scale=2, x=10, y=10, color=0x00FF00)
         
-        # Displays the actual log lines
         self.logs_label = label.Label(terminalio.FONT, text="", x=10, y=40, color=0x00FF00, line_spacing=1.2)
         
-        self.back = label.Label(terminalio.FONT, text="[B] Back | [JOY] Scroll", x=10, y=220, color=0xFFFFFF)
+        self.back = label.Label(terminalio.FONT, text="[B] Back | [X] Clear All | [JOY] Scroll", x=10, y=220, color=0xFFFFFF)
 
         self.root_group.append(self.bg)
         self.root_group.append(self.title)
         self.root_group.append(self.logs_label)
         self.root_group.append(self.back)
         
-        # Scrolling State
         self.max_lines_visible = 12
         self.top_line_index = 0
         self.scroll_cooldown = 0.0
 
     def enter(self):
-        # Auto-scroll to the bottom (show newest)
         total_logs = len(self.manager.logs)
-        # Calculate the index so the last line is at the bottom
         self.top_line_index = max(0, total_logs - self.max_lines_visible)
         self.update_view()
 
     def update_view(self):
-        # Slice the logs based on current scroll position
+        # Slice visible logs
         start = self.top_line_index
         end = start + self.max_lines_visible
-        visible_logs = self.manager.logs[start:end]
+        visible_entries = self.manager.logs[start:end]
         
-        self.logs_label.text = "\n".join(visible_logs)
+        # Build formatted strings
+        display_lines = []
+        for entry in visible_entries:
+            msg = entry['msg']
+            raw_time = int(entry['time'])
+            
+            # Format time MM:SS
+            mins = raw_time // 60
+            secs = raw_time % 60
+            time_str = f"[{mins:02}:{secs:02}]"
+            
+            # Format layout: Message aligned left, Time aligned right
+            # Max width approx 50 chars for 320px
+            max_msg_len = 40
+            if len(msg) > max_msg_len:
+                msg = msg[:max_msg_len-1] + "…"
+            
+            # Calculate spaces needed to push time to the right
+            # Target width = 48 chars
+            target_width = 48
+            space_needed = max(1, target_width - len(msg) - len(time_str))
+            
+            line = f"{msg}{' ' * space_needed}{time_str}"
+            display_lines.append(line)
         
-        # Update title with position indicator
+        self.logs_label.text = "\n".join(display_lines)
+        
         total = len(self.manager.logs)
         current = min(end, total)
         self.title.text = f"LOGS ({current}/{total})"
 
     def update(self, handler, dt):
-        # 1. Back Navigation
         if handler.was_just_pressed("B"):
             self.manager.change_state(STATE_SETTINGS)
 
-        # 2. Scrolling Logic
-        # We use a cooldown so it doesn't scroll 60 lines per second
+        if handler.was_just_pressed("X"):
+            self.manager.clear_logs()
+            self.top_line_index = 0
+            self.update_view()
+
+        # Scrolling
         self.scroll_cooldown -= dt
-        
         if self.scroll_cooldown <= 0:
             dirs = handler.get_direction()
-            
             did_scroll = False
             
-            # Scroll UP (Backward in history)
             if dirs['UP']:
                 if self.top_line_index > 0:
                     self.top_line_index -= 1
                     did_scroll = True
-            
-            # Scroll DOWN (Forward in history)
             elif dirs['DOWN']:
                 total_logs = len(self.manager.logs)
                 max_start = max(0, total_logs - self.max_lines_visible)
@@ -224,7 +243,7 @@ class ConsoleState(BaseState):
             
             if did_scroll:
                 self.update_view()
-                self.scroll_cooldown = 0.1 # 100ms delay between scrolls
+                self.scroll_cooldown = 0.1
 
 # -----------------------------------------------------------
 # STATE MANAGER
@@ -235,22 +254,34 @@ class GameStateManager:
         self.states = {}
         self.current_state_obj = None
         
-        # Increased log capacity for scrolling demo
-        self.logs = ["System Boot...", "Manager Init..."]
+        self.logs = []
+        self.log_timeout = 300.0 # 5 Minutes
 
         self.states[STATE_MENU] = MenuState(self)
         self.states[STATE_PLATFORMER] = PlatformerState(self)
         self.states[STATE_GAME_OVER] = GameOverState(self)
         self.states[STATE_SETTINGS] = SettingsState(self)
         self.states[STATE_CONSOLE] = ConsoleState(self)
+        
+        self.log("System Boot...")
+        self.log("Manager Init...")
 
     def log(self, message):
-        """Adds a message to the internal log list"""
-        self.logs.append(f"> {message}")
-        # Keep list size reasonable (max 50 lines now)
+        """Adds a timestamped message to the log"""
+        entry = {
+            'msg': f"> {message}",
+            'time': time.monotonic()
+        }
+        self.logs.append(entry)
+        
         if len(self.logs) > 50:
             self.logs.pop(0)
+        
         print(f"LOG: {message}")
+
+    def clear_logs(self):
+        self.logs = []
+        self.log("Logs cleared manually.")
 
     def change_state(self, state_id):
         if state_id not in self.states: return
@@ -268,5 +299,10 @@ class GameStateManager:
         self.main_group.append(self.current_state_obj.get_group())
 
     def update(self, handler, dt):
+        # 1. AUTO-DELETE OLD LOGS
+        now = time.monotonic()
+        self.logs = [log for log in self.logs if (now - log['time']) < self.log_timeout]
+
+        # 2. Update Current State
         if self.current_state_obj:
             self.current_state_obj.update(handler, dt)
