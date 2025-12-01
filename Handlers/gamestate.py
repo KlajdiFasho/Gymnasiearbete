@@ -8,7 +8,7 @@ STATE_MENU = "MENU"
 STATE_PLATFORMER = "PLATFORMER"
 STATE_GAME_OVER = "GAME_OVER"
 STATE_SETTINGS = "SETTINGS"
-STATE_CONSOLE = "CONSOLE"  # NEW CONSTANT
+STATE_CONSOLE = "CONSOLE"
 
 # -----------------------------------------------------------
 # BASE STATE
@@ -58,7 +58,7 @@ class PlatformerState(BaseState):
         super().__init__(manager)
         self.bg = Rect(0, 0, 320, 240, fill=0x000000)
         self.player = Rect(150, 110, 20, 20, fill=0x00FF00)
-        self.hud = label.Label(terminalio.FONT, text="PLAYING...", x=10, y=10, color=0xFFFFFF)
+        self.hud = label.Label(terminalio.FONT, text="PLAYING... (Press B to die.)", x=10, y=10, color=0xFFFFFF)
         
         self.root_group.append(self.bg)
         self.root_group.append(self.player)
@@ -70,7 +70,7 @@ class PlatformerState(BaseState):
 
     def enter(self):
         self.px, self.py = 150.0, 110.0
-        self.manager.log("Game Started") # Log event
+        self.manager.log("Game Started")
 
     def update(self, handler, dt):
         ax, ay = handler.get_axis()
@@ -119,11 +119,9 @@ class SettingsState(BaseState):
         super().__init__(manager)
         self.bg = Rect(0, 0, 320, 240, fill=0x444444)
         
-        # UI Elements
         self.text = label.Label(terminalio.FONT, text="SETTINGS\n\nSensitivity: ...", scale=2, x=20, y=40, color=0xFFFFFF)
         self.help = label.Label(terminalio.FONT, text="Press X to Toggle Sense", x=20,y=130, color=0xDDDDDD)
         
-        # Navigation Hints
         self.console_hint = label.Label(terminalio.FONT, text="Press SEL for Console", x=20, y=180, color=0x00FF00)
         self.back_hint = label.Label(terminalio.FONT, text="Press B to Back (Menu)", x=20, y=210, color=0xCCCCCC)
         
@@ -142,46 +140,91 @@ class SettingsState(BaseState):
     def update(self, handler, dt):
         self.update_label(handler.sensitivity)
 
-        # 1. Go Back to Menu
         if handler.was_just_pressed("B"):
             self.manager.change_state(STATE_MENU)
         
-        # 2. Enter Console (Sub-menu)
         if handler.was_just_pressed("SEL"):
             self.manager.change_state(STATE_CONSOLE)
         
-        # 3. Toggle Setting
         if handler.was_just_pressed("X"):
             handler.sensitivity = 2.0 if handler.sensitivity == 1.5 else 1.5
             self.manager.log(f"Sense set to: {handler.sensitivity}")
 
 # -----------------------------------------------------------
-# STATE 5: CONSOLE (New Feature)
+# STATE 5: CONSOLE (Updated with Scrolling)
 # -----------------------------------------------------------
 class ConsoleState(BaseState):
     def __init__(self, manager):
         super().__init__(manager)
-        # Terminal look: Dark background, Green text
         self.bg = Rect(0, 0, 320, 240, fill=0x111111) 
-        self.title = label.Label(terminalio.FONT, text="SYSTEM OUTPUTS", scale=2, x=10, y=20, color=0x00FF00)
-        self.logs_label = label.Label(terminalio.FONT, text="", x=10, y=50, color=0x00FF00, line_spacing=1.2)
-        self.back = label.Label(terminalio.FONT, text="[B] Back to Settings", x=10, y=220, color=0xFFFFFF)
+        self.title = label.Label(terminalio.FONT, text="SYSTEM LOGS", scale=2, x=10, y=10, color=0x00FF00)
+        
+        # Displays the actual log lines
+        self.logs_label = label.Label(terminalio.FONT, text="", x=10, y=40, color=0x00FF00, line_spacing=1.2)
+        
+        self.back = label.Label(terminalio.FONT, text="[B] Back | [JOY] Scroll", x=10, y=220, color=0xFFFFFF)
 
         self.root_group.append(self.bg)
         self.root_group.append(self.title)
         self.root_group.append(self.logs_label)
         self.root_group.append(self.back)
+        
+        # Scrolling State
+        self.max_lines_visible = 12
+        self.top_line_index = 0
+        self.scroll_cooldown = 0.0
 
     def enter(self):
-        # Retrieve the last 10 logs from the manager
-        recent_logs = self.manager.logs[-12:] 
-        # Join them with newlines to display
-        self.logs_label.text = "\n".join(recent_logs)
+        # Auto-scroll to the bottom (show newest)
+        total_logs = len(self.manager.logs)
+        # Calculate the index so the last line is at the bottom
+        self.top_line_index = max(0, total_logs - self.max_lines_visible)
+        self.update_view()
+
+    def update_view(self):
+        # Slice the logs based on current scroll position
+        start = self.top_line_index
+        end = start + self.max_lines_visible
+        visible_logs = self.manager.logs[start:end]
+        
+        self.logs_label.text = "\n".join(visible_logs)
+        
+        # Update title with position indicator
+        total = len(self.manager.logs)
+        current = min(end, total)
+        self.title.text = f"LOGS ({current}/{total})"
 
     def update(self, handler, dt):
-        # Go back to Settings (not Menu)
+        # 1. Back Navigation
         if handler.was_just_pressed("B"):
             self.manager.change_state(STATE_SETTINGS)
+
+        # 2. Scrolling Logic
+        # We use a cooldown so it doesn't scroll 60 lines per second
+        self.scroll_cooldown -= dt
+        
+        if self.scroll_cooldown <= 0:
+            dirs = handler.get_direction()
+            
+            did_scroll = False
+            
+            # Scroll UP (Backward in history)
+            if dirs['UP']:
+                if self.top_line_index > 0:
+                    self.top_line_index -= 1
+                    did_scroll = True
+            
+            # Scroll DOWN (Forward in history)
+            elif dirs['DOWN']:
+                total_logs = len(self.manager.logs)
+                max_start = max(0, total_logs - self.max_lines_visible)
+                if self.top_line_index < max_start:
+                    self.top_line_index += 1
+                    did_scroll = True
+            
+            if did_scroll:
+                self.update_view()
+                self.scroll_cooldown = 0.1 # 100ms delay between scrolls
 
 # -----------------------------------------------------------
 # STATE MANAGER
@@ -192,7 +235,7 @@ class GameStateManager:
         self.states = {}
         self.current_state_obj = None
         
-        # Log Storage
+        # Increased log capacity for scrolling demo
         self.logs = ["System Boot...", "Manager Init..."]
 
         self.states[STATE_MENU] = MenuState(self)
@@ -203,12 +246,10 @@ class GameStateManager:
 
     def log(self, message):
         """Adds a message to the internal log list"""
-        # Add to list
         self.logs.append(f"> {message}")
-        # Keep list size manageable (max 20 lines)
-        if len(self.logs) > 20:
+        # Keep list size reasonable (max 50 lines now)
+        if len(self.logs) > 50:
             self.logs.pop(0)
-        # Also print to Serial for debugging
         print(f"LOG: {message}")
 
     def change_state(self, state_id):
@@ -220,7 +261,6 @@ class GameStateManager:
         self.current_state_obj = self.states[state_id]
         self.current_state_obj.enter()
 
-        # Log the transition (so we have things to see in the console)
         self.log(f"State -> {state_id}")
 
         while len(self.main_group) > 0:
