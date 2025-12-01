@@ -8,6 +8,7 @@ STATE_MENU = "MENU"
 STATE_PLATFORMER = "PLATFORMER"
 STATE_GAME_OVER = "GAME_OVER"
 STATE_SETTINGS = "SETTINGS"
+STATE_CONSOLE = "CONSOLE"  # NEW CONSTANT
 
 # -----------------------------------------------------------
 # BASE STATE
@@ -35,7 +36,7 @@ class BaseState:
 class MenuState(BaseState):
     def __init__(self, manager):
         super().__init__(manager)
-        self.bg = Rect(0, 0, 320, 240, fill=0x000044) # Dark Blue
+        self.bg = Rect(0, 0, 320, 240, fill=0x000044)
         self.title = label.Label(terminalio.FONT, text="MAIN MENU", scale=3, x=60, y=60, color=0xFFFFFF)
         self.instr = label.Label(terminalio.FONT, text="Press A to Start\nPress SEL for Settings", scale=2, x=40, y=140, color=0xAAAAAA)
         
@@ -55,9 +56,9 @@ class MenuState(BaseState):
 class PlatformerState(BaseState):
     def __init__(self, manager):
         super().__init__(manager)
-        self.bg = Rect(0, 0, 320, 240, fill=0x000000) # Black
-        self.player = Rect(150, 110, 20, 20, fill=0x00FF00) # Green Player
-        self.hud = label.Label(terminalio.FONT, text="PLAYING... (Press B to Die)", x=10, y=10, color=0xFFFFFF)
+        self.bg = Rect(0, 0, 320, 240, fill=0x000000)
+        self.player = Rect(150, 110, 20, 20, fill=0x00FF00)
+        self.hud = label.Label(terminalio.FONT, text="PLAYING...", x=10, y=10, color=0xFFFFFF)
         
         self.root_group.append(self.bg)
         self.root_group.append(self.player)
@@ -65,20 +66,17 @@ class PlatformerState(BaseState):
         
         self.px = 150.0
         self.py = 110.0
-        self.speed = 100.0 
+        self.speed = 100.0
 
     def enter(self):
-        # Reset position when game starts
         self.px, self.py = 150.0, 110.0
-        self.player.x, self.player.y = int(self.px), int(self.py)
+        self.manager.log("Game Started") # Log event
 
     def update(self, handler, dt):
-        # Movement
         ax, ay = handler.get_axis()
         self.px += ax * self.speed * dt
-        self.py += ay * (-self.speed) * dt # Invert Y for screen coords
+        self.py += ay * (-self.speed) * dt
 
-        # Screen Wrap
         if self.px > 320: self.px = 0
         if self.px < 0: self.px = 320
         if self.py > 240: self.py = 0
@@ -87,7 +85,6 @@ class PlatformerState(BaseState):
         self.player.x = int(self.px)
         self.player.y = int(self.py)
 
-        # Transitions
         if handler.was_just_pressed("B"):
             self.manager.change_state(STATE_GAME_OVER)
         if handler.was_just_pressed("SEL"):
@@ -99,13 +96,16 @@ class PlatformerState(BaseState):
 class GameOverState(BaseState):
     def __init__(self, manager):
         super().__init__(manager)
-        self.bg = Rect(0, 0, 320, 240, fill=0x440000) # Dark Red
+        self.bg = Rect(0, 0, 320, 240, fill=0x440000)
         self.msg = label.Label(terminalio.FONT, text="GAME OVER", scale=3, x=60, y=100, color=0xFF0000)
         self.sub = label.Label(terminalio.FONT, text="Press A to Restart", scale=2, x=50, y=150, color=0xFFFFFF)
         
         self.root_group.append(self.bg)
         self.root_group.append(self.msg)
         self.root_group.append(self.sub)
+
+    def enter(self):
+        self.manager.log("Player Died")
 
     def update(self, handler, dt):
         if handler.was_just_pressed("A"):
@@ -117,15 +117,21 @@ class GameOverState(BaseState):
 class SettingsState(BaseState):
     def __init__(self, manager):
         super().__init__(manager)
-        self.bg = Rect(0, 0, 320, 240, fill=0x444444) # Grey
+        self.bg = Rect(0, 0, 320, 240, fill=0x444444)
+        
+        # UI Elements
         self.text = label.Label(terminalio.FONT, text="SETTINGS\n\nSensitivity: ...", scale=2, x=20, y=40, color=0xFFFFFF)
-        self.help = label.Label(terminalio.FONT, text="Press X to Toggle", x=20,y=150, color=0xFFFFFF)
-        self.back = label.Label(terminalio.FONT, text="Press B to Back", x=20, y=200, color=0xFFFFFF)
+        self.help = label.Label(terminalio.FONT, text="Press X to Toggle Sense", x=20,y=130, color=0xDDDDDD)
+        
+        # Navigation Hints
+        self.console_hint = label.Label(terminalio.FONT, text="Press SEL for Console", x=20, y=180, color=0x00FF00)
+        self.back_hint = label.Label(terminalio.FONT, text="Press B to Back (Menu)", x=20, y=210, color=0xCCCCCC)
         
         self.root_group.append(self.bg)
         self.root_group.append(self.text)
         self.root_group.append(self.help)
-        self.root_group.append(self.back)
+        self.root_group.append(self.console_hint)
+        self.root_group.append(self.back_hint)
 
     def update_label(self, sensitivity):
         if sensitivity > 1.5:
@@ -136,12 +142,46 @@ class SettingsState(BaseState):
     def update(self, handler, dt):
         self.update_label(handler.sensitivity)
 
+        # 1. Go Back to Menu
         if handler.was_just_pressed("B"):
             self.manager.change_state(STATE_MENU)
         
-        # Cleaner Toggle Logic
+        # 2. Enter Console (Sub-menu)
+        if handler.was_just_pressed("SEL"):
+            self.manager.change_state(STATE_CONSOLE)
+        
+        # 3. Toggle Setting
         if handler.was_just_pressed("X"):
             handler.sensitivity = 2.0 if handler.sensitivity == 1.5 else 1.5
+            self.manager.log(f"Sense set to: {handler.sensitivity}")
+
+# -----------------------------------------------------------
+# STATE 5: CONSOLE (New Feature)
+# -----------------------------------------------------------
+class ConsoleState(BaseState):
+    def __init__(self, manager):
+        super().__init__(manager)
+        # Terminal look: Dark background, Green text
+        self.bg = Rect(0, 0, 320, 240, fill=0x111111) 
+        self.title = label.Label(terminalio.FONT, text="SYSTEM OUTPUTS", scale=2, x=10, y=20, color=0x00FF00)
+        self.logs_label = label.Label(terminalio.FONT, text="", x=10, y=50, color=0x00FF00, line_spacing=1.2)
+        self.back = label.Label(terminalio.FONT, text="[B] Back to Settings", x=10, y=220, color=0xFFFFFF)
+
+        self.root_group.append(self.bg)
+        self.root_group.append(self.title)
+        self.root_group.append(self.logs_label)
+        self.root_group.append(self.back)
+
+    def enter(self):
+        # Retrieve the last 10 logs from the manager
+        recent_logs = self.manager.logs[-12:] 
+        # Join them with newlines to display
+        self.logs_label.text = "\n".join(recent_logs)
+
+    def update(self, handler, dt):
+        # Go back to Settings (not Menu)
+        if handler.was_just_pressed("B"):
+            self.manager.change_state(STATE_SETTINGS)
 
 # -----------------------------------------------------------
 # STATE MANAGER
@@ -151,11 +191,25 @@ class GameStateManager:
         self.main_group = main_display_group
         self.states = {}
         self.current_state_obj = None
+        
+        # Log Storage
+        self.logs = ["System Boot...", "Manager Init..."]
 
         self.states[STATE_MENU] = MenuState(self)
         self.states[STATE_PLATFORMER] = PlatformerState(self)
         self.states[STATE_GAME_OVER] = GameOverState(self)
         self.states[STATE_SETTINGS] = SettingsState(self)
+        self.states[STATE_CONSOLE] = ConsoleState(self)
+
+    def log(self, message):
+        """Adds a message to the internal log list"""
+        # Add to list
+        self.logs.append(f"> {message}")
+        # Keep list size manageable (max 20 lines)
+        if len(self.logs) > 20:
+            self.logs.pop(0)
+        # Also print to Serial for debugging
+        print(f"LOG: {message}")
 
     def change_state(self, state_id):
         if state_id not in self.states: return
@@ -166,11 +220,12 @@ class GameStateManager:
         self.current_state_obj = self.states[state_id]
         self.current_state_obj.enter()
 
-        # Wipe screen and add new state group
+        # Log the transition (so we have things to see in the console)
+        self.log(f"State -> {state_id}")
+
         while len(self.main_group) > 0:
             self.main_group.pop()
         self.main_group.append(self.current_state_obj.get_group())
-        print(f"State: {state_id}")
 
     def update(self, handler, dt):
         if self.current_state_obj:
