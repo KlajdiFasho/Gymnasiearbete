@@ -59,7 +59,7 @@ class PlatformerState(BaseState):
         super().__init__(manager)
         self.bg = Rect(0, 0, 320, 240, fill=0x000000)
         self.player = Rect(150, 110, 20, 20, fill=0x00FF00)
-        self.hud = label.Label(terminalio.FONT, text="PLAYING...", x=10, y=10, color=0xFFFFFF)
+        self.hud = label.Label(terminalio.FONT, text="PLAYING... (Press B to die.)", x=10, y=10, color=0xFFFFFF)
         
         self.root_group.append(self.bg)
         self.root_group.append(self.player)
