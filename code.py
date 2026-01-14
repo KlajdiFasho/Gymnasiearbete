@@ -3,11 +3,18 @@ import board
 import displayio
 import framebufferio
 import picodvi
-from Handlers import input_handler
-from Handlers import gamestate 
+import gc
 
-# 1. Setup Display
+from Handlers import input_handler
+from Handlers import gamestate
+
+# -----------------------------------------------------------
+# 1. HARDWARE INITIALIZATION
+# -----------------------------------------------------------
+print("Initializing Hardware...")
 displayio.release_displays()
+
+# Setup HDMI
 fb = picodvi.Framebuffer(320, 240,
     clk_dp=board.CKP, clk_dn=board.CKN,
     red_dp=board.D0P, red_dn=board.D0N,
@@ -15,32 +22,46 @@ fb = picodvi.Framebuffer(320, 240,
     blue_dp=board.D2P, blue_dn=board.D2N,
     color_depth=8)
 display = framebufferio.FramebufferDisplay(fb)
+
+# Create Root Group
 root = displayio.Group()
 display.root_group = root
 
-# 2. Setup Input
+# -----------------------------------------------------------
+# 2. SYSTEM SETUP
+# -----------------------------------------------------------
 handler = input_handler.InputHandler(sensitivity=1.5)
-
-# 3. Setup Game State Machine
-# We pass 'root' so the manager can swap out the graphics
 manager = gamestate.GameStateManager(root)
 manager.change_state(gamestate.STATE_MENU)
 
-# 4. Main Loop
+# Clean up setup memory
+gc.collect()
+
+# -----------------------------------------------------------
+# 3. MASTER GAME LOOP
+# -----------------------------------------------------------
+print("Starting Main Loop...")
 last_time = time.monotonic()
 
 while True:
-    now = time.monotonic()
-    dt = now - last_time
-    last_time = now
+    try:
+        # A. Time Management
+        now = time.monotonic()
+        dt = now - last_time
+        last_time = now
+        
+        # Safety Cap: Prevent physics explosions if game freezes momentarily
+        if dt > 0.1: dt = 0.1
 
-    # A. Update Inputs
-    handler.update()
+        # B. Logic Updates
+        handler.update()
+        manager.update(handler, dt)
 
-    # B. Update Game State
-    # The manager figures out if we are in Menu, Game, or Settings
-    # and runs the correct logic.
-    manager.update(handler, dt)
+        # C. Frame Rate Control
+        # We rely on auto_refresh handling the display sync.
+        # A small sleep yields CPU to background tasks.
+        time.sleep(0.01)
 
-    # Small sleep to keep things cool
-    time.sleep(0.01)
+    except Exception as e:
+        print(f"CRITICAL LOOP ERROR: {e}")
+        time.sleep(1.0)
