@@ -49,7 +49,7 @@ while True:
         now = time.monotonic()
         dt = now - last_time
         last_time = now
-        
+
         # Safety Cap: Prevent physics explosions if game freezes momentarily
         if dt > 0.1: dt = 0.1
 
