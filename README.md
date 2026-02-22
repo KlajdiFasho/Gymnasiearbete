@@ -19,7 +19,7 @@ Contains handler modules that manage:
 - Core emulation logic
 
 ### 4. **code.py** - Main Entry Point
-The primary Python script that orchestrates the entire Gameboy emulator, including:
+The primary CircuitPython script that orchestrates the entire Gameboy emulator, including:
 - Initialization of emulator components
 - Main game loop
 - Rendering and display management
@@ -27,25 +27,9 @@ The primary Python script that orchestrates the entire Gameboy emulator, includi
 
 ## Technologies Used
 
-- **Language**: Python
+- **Language**: CircuitPython
 - **Platform**: Handheld console emulation
 - **Focus**: Classic Gameboy functionality
-
-## Project Details
-
-- **Created**: December 1, 2025
-- **Last Updated**: January 14, 2026
-- **Repository Visibility**: Private
-- **License**: Not specified
-- **Repository ID**: 1107635530
-
-## Getting Started
-
-1. Clone this repository
-2. Ensure Python is installed on your system
-3. Run the main script: `python code.py`
-4. Load game files from the `Games/` directory
-5. Interact with the emulator using your input handlers
 
 ## Features
 
@@ -71,4 +55,4 @@ Potential areas for expansion:
 
 ---
 
-*This is a graduation project showcasing software emulation and systems programming concepts in Python.*
+*This is a graduation project showcasing software emulation and systems programming concepts in CircuitPython.*
