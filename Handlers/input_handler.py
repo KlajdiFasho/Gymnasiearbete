@@ -317,3 +317,4 @@ class InputHandler:
             for cb in self._callbacks[name][event]:
                 try: cb(name)
                 except: pass
+
