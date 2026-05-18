@@ -1,4 +1,5 @@
 # PocketPenguin - Gameboy Emulator Project
+<img width="382.5" height="510" alt="1000008397" src="https://github.com/user-attachments/assets/ec4d96be-9518-4469-ba07-626618e40eba" />
 
 ## Overview
 
